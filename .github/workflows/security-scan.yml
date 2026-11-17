@@ -126,6 +126,7 @@ jobs:
     # exactly like the no-Advanced-Security failure the other four callers
     # have and sends you to flip the wrong switch.
     permissions:
+      actions: read
       contents: read
       security-events: write
     # No `secrets:` block — the scan needs nothing but the automatic
