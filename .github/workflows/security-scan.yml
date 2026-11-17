@@ -112,7 +112,7 @@ on:
 
 jobs:
   security-scan:
-    uses: fredericowu/aw-shared-workflows/.github/workflows/security-scan-reusable.yml@v1.6.0
+    uses: fredericowu/aw-shared-workflows/.github/workflows/security-scan-reusable.yml@master
     # Declared here as well as in the called workflow: the effective
     # GITHUB_TOKEN permissions are the INTERSECTION of the two, and it cuts
     # BOTH ways — a scope either side omits is an explicit `none`, never an
