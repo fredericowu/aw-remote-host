@@ -2072,13 +2072,15 @@ func runModuleEnv(opts BootstrapOpts, extraEnv []string) []string {
 	// update recorded in state.json over the env pin, and a plain passthrough
 	// would hand install.sh that env pin anyway, leaving every recreate after
 	// an update back on the stale digest the update had just replaced.
+	power := effectiveHostPower(opts.StatePath)
 	env := append(bootstrap.EnvPassthrough("XDG_RUNTIME_DIR"),
 		"AW_WORKSPACE_IMAGE="+workspaceImage(),
 		"AW_WORKSPACE_SLUG="+opts.WorkspaceSlug,
 		"AW_POSTGRES_PASSWORD="+opts.PostgresPassword,
 		"AW_BACKEND_URL="+opts.ControlPlane,
 		"AW_WORKSPACE_HOST_TOKEN="+opts.HostCredential,
-		"AW_HOST_POWER="+effectiveHostPower(opts.StatePath),
+		"AW_HOST_POWER="+hostpower.Format(power.Effective),
+		hostpower.GPUEnvVar+"="+hostpower.Format(power.GPUDevices),
 		"AW_WORKSPACE_WORKERS="+effectiveWorkers(opts.StatePath),
 	)
 	return append(env, extraEnv...)
@@ -2095,15 +2097,15 @@ func runModuleEnv(opts BootstrapOpts, extraEnv []string) []string {
 //
 // Re-probed (not read back verbatim) so a host that has since gained
 // /dev/kvm starts offering it without the operator re-running the flag.
-func effectiveHostPower(statePath string) string {
+func effectiveHostPower(statePath string) hostpower.Resolution {
 	if statePath == "" {
-		return ""
+		return hostpower.Resolution{}
 	}
 	st, err := state.Load(statePath)
 	if err != nil || len(st.HostPower) == 0 {
-		return ""
+		return hostpower.Resolution{}
 	}
-	return hostpower.Format(hostpower.Resolve(st.HostPower).Effective)
+	return hostpower.Resolve(st.HostPower)
 }
 
 // effectiveWorkers reads this host's persisted worker-process count for the

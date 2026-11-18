@@ -71,6 +71,7 @@ RUNNER_WARM_CONTAINER="${RUNNER_WARM_CONTAINER:-}"
 # would grant access to the one process that has no use for it while leaving
 # the app that needs it unchanged.
 AW_HOST_POWER="${AW_HOST_POWER:-}"
+AW_HOST_GPU_DEVICES="${AW_HOST_GPU_DEVICES:-}"
 
 # Worker-process count for this container — persisted HOST state (see
 # internal/state.State.Workers / EffectiveWorkers), NOT baked into the image
@@ -286,6 +287,10 @@ if podman container exists "$CONTAINER_NAME"; then
       | sed -n 's/^AW_HOST_POWER=//p' | head -n1)" != "$AW_HOST_POWER" ]; then
     echo "workspace: AW_HOST_POWER changed (now '${AW_HOST_POWER:-none}') — recreating to pick it up"
     podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  elif [ "$(podman inspect "$CONTAINER_NAME" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+      | sed -n 's/^AW_HOST_GPU_DEVICES=//p' | head -n1)" != "$AW_HOST_GPU_DEVICES" ]; then
+    echo "workspace: GPU device selection changed — recreating to pick it up"
+    podman rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   # Same rationale as the AW_HOST_POWER check above: env is fixed at
   # container creation, so a persisted worker-count change only reaches the
   # workspace through a recreate.
@@ -339,6 +344,7 @@ if ! podman container exists "$CONTAINER_NAME"; then
     -e AW_WORKSPACE_HOME_HOST_DIR="$HOME_HOST_DIR" \
     ${RUNNER_WARM_CONTAINER:+-e RUNNER_WARM_CONTAINER="$RUNNER_WARM_CONTAINER"} \
     -e AW_HOST_POWER="$AW_HOST_POWER" \
+    -e AW_HOST_GPU_DEVICES="$AW_HOST_GPU_DEVICES" \
     -e AW_WORKSPACE_WORKERS="$AW_WORKSPACE_WORKERS" \
     "$IMAGE"
 fi

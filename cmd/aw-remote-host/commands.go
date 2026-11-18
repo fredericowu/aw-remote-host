@@ -254,17 +254,17 @@ func parseWorkersFlag(fs *flag.FlagSet, raw string) (int, bool, error) {
 // What must not happen is the request being passed on as though it succeeded,
 // because then the workspace lets an app load that will come up without the
 // device it needs.
-func resolveHostPower(requested []string) (string, error) {
+func resolveHostPower(res hostpower.Resolution) (string, error) {
+	requested := res.Requested
 	if len(requested) == 0 {
 		return "", nil
 	}
-	res := hostpower.Resolve(requested)
 	for _, name := range requested {
 		if reason, denied := res.Refused[name]; denied {
 			rlog.Printf("host-power: %s NOT granted — %s\n", name, reason)
 		}
 	}
-	if len(res.Effective) == 0 {
+	if len(res.Effective) == 0 && !(len(requested) == 1 && requested[0] == "gpu") {
 		return "", fmt.Errorf(
 			"host-power: none of %s can be delivered by this host — see the reasons above",
 			strings.Join(requested, ","))
@@ -328,7 +328,7 @@ func runLinkOrBootstrap(cmdName string, args []string, allowProvision bool) erro
 		force = fs.Bool("force", false, "provision anyway even though this binary's version is older than the one that last completed a full bootstrap on this host (state.CheckDowngrade) — a full bootstrap re-runs podman/postgres/redis from scratch, which can silently reset them onto empty storage, so this refusal is the default and --force is an explicit opt-out")
 	}
 	hostPower := fs.String("host-power", "", "comma-separated elevated host access to grant app containers on this machine (default: none). Grants:\n"+hostpower.Help()+
-		"Only what this host can actually deliver is granted — each grant is probed, and anything undeliverable is reported, not silently assumed. An app must ALSO declare it in runtime.host_power and hold the matching host:* permission. Re-run with a different value to change it; pass --host-power=none to revoke.")
+		"Only what this host can actually deliver is granted — each grant is probed, and anything undeliverable is reported, not silently assumed. An app must ALSO declare it in runtime.host_power or runtime.host_power_optional and hold the matching host:* permission. Re-run with a different value to change it; pass --host-power=none to revoke.")
 	workers := fs.String("workers", "", "worker-process count for this host's workspace container (default: 5, kept in sync with the image's own default — the two live in separate repos and must be bumped together). Persists across a container recreation, the same way --host-power does. Re-run with a different value to change it.")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -508,7 +508,8 @@ func runLinkOrBootstrap(cmdName string, args []string, allowProvision bool) erro
 			return err
 		}
 	}
-	hostPowerEnv, err := resolveHostPower(st.HostPower)
+	powerResolution := hostpower.Resolve(st.HostPower)
+	hostPowerEnv, err := resolveHostPower(powerResolution)
 	if err != nil {
 		return err
 	}
@@ -754,6 +755,7 @@ func runLinkOrBootstrap(cmdName string, args []string, allowProvision bool) erro
 				"AW_BACKEND_URL="+*controlPlane,
 				"AW_WORKSPACE_HOST_TOKEN="+reg.hostCredential,
 				"AW_HOST_POWER="+hostPowerEnv,
+				hostpower.GPUEnvVar+"="+hostpower.Format(powerResolution.GPUDevices),
 				"AW_WORKSPACE_WORKERS="+workersEnv,
 			),
 		}

@@ -98,7 +98,7 @@ func TestStoredValueIsTheRequestNotTheProbeResult(t *testing.T) {
 }
 
 func TestResolveHostPowerEmptyIsEmpty(t *testing.T) {
-	env, err := resolveHostPower(nil)
+	env, err := resolveHostPower(hostpower.Resolve(nil))
 	if err != nil || env != "" {
 		t.Fatalf("got %q %v", env, err)
 	}
@@ -108,7 +108,7 @@ func TestResolveHostPowerEmptyIsEmpty(t *testing.T) {
 // for elevation and got none of it, so proceeding silently would hand back a
 // workspace that looks configured and is not.
 func TestResolveHostPowerFailsWhenNothingIsDeliverable(t *testing.T) {
-	if _, err := resolveHostPower([]string{"binder"}); err != nil {
+	if _, err := resolveHostPower(hostpower.Resolve([]string{"binder"})); err != nil {
 		if testing.Short() {
 			t.Skip()
 		}
@@ -120,11 +120,21 @@ func TestResolveHostPowerFailsWhenNothingIsDeliverable(t *testing.T) {
 // Privileged always probes true, so it always yields a non-empty env value —
 // the branch above must not fire for it.
 func TestResolveHostPowerPrivilegedSucceeds(t *testing.T) {
-	env, err := resolveHostPower([]string{hostpower.Privileged})
+	env, err := resolveHostPower(hostpower.Resolve([]string{hostpower.Privileged}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if env != hostpower.Privileged {
 		t.Fatalf("got %q", env)
+	}
+}
+
+func TestGPURefusalAllowsCPUWorkspaceBootstrap(t *testing.T) {
+	env, err := resolveHostPower(hostpower.Resolution{
+		Requested: []string{"gpu"},
+		Refused:   map[string]string{"gpu": "no render node"},
+	})
+	if err != nil || env != "" {
+		t.Fatalf("CPU fallback = %q, %v", env, err)
 	}
 }

@@ -41,6 +41,9 @@ const AllKeyword = "all"
 // EnvVar is the variable the workspace container reads the effective set from.
 const EnvVar = "AW_HOST_POWER"
 
+// GPUEnvVar carries the probed GPU device selection for sibling app containers.
+const GPUEnvVar = "AW_HOST_GPU_DEVICES"
+
 // Grant is one named unit of elevated access.
 type Grant struct {
 	Name string
@@ -56,7 +59,7 @@ type Grant struct {
 }
 
 // Granular is what AllKeyword expands to, in display order.
-var Granular = []string{"kvm", "tun", "fuse", "binder"}
+var Granular = []string{"kvm", "tun", "fuse", "binder", "gpu"}
 
 // Privileged is the blunt one. It has to be typed by name; nothing expands to it.
 const Privileged = "privileged"
@@ -83,6 +86,10 @@ var catalog = map[string]Grant{
 		Name:    "binder",
 		Devices: []string{"/dev/binder", "/dev/hwbinder", "/dev/vndbinder"},
 		Desc:    "Android binder IPC — a redroid/Android guest",
+	},
+	"gpu": {
+		Name: "gpu",
+		Desc: "Linux DRM render nodes, with optional AMD ROCm compute device",
 	},
 	Privileged: {
 		Name: Privileged,
@@ -160,6 +167,10 @@ func Probe(name string) (bool, string) {
 	if name == Privileged {
 		return true, ""
 	}
+	if name == "gpu" {
+		_, reason := probeGPU()
+		return reason == "", reason
+	}
 	for _, dev := range grant.Devices {
 		info, err := os.Stat(dev)
 		if err != nil {
@@ -186,8 +197,9 @@ func Probe(name string) (bool, string) {
 // Resolution is the outcome of reconciling what was asked for with what this
 // host can do.
 type Resolution struct {
-	Requested []string
-	Effective []string
+	Requested  []string
+	Effective  []string
+	GPUDevices []string
 	// Refused maps a requested-but-undeliverable grant to the probe's reason.
 	Refused map[string]string
 }
@@ -210,6 +222,16 @@ func Resolve(requested []string) Resolution {
 	}
 	seen := map[string]bool{}
 	for _, name := range requested {
+		if name == "gpu" {
+			devices, reason := probeGPU()
+			if reason != "" {
+				res.Refused[name] = reason
+			} else {
+				seen[name] = true
+				res.GPUDevices = devices
+			}
+			continue
+		}
 		ok, reason := Probe(name)
 		if ok {
 			seen[name] = true
@@ -240,6 +262,16 @@ func PodmanArgs(grants []string) []string {
 	var caps []string
 	for _, name := range grants {
 		grant := catalog[name]
+		if name == "gpu" {
+			devices, _ := probeGPU()
+			for _, device := range devices {
+				if device == keepGroups {
+					args = append(args, "--group-add", keepGroups)
+				} else {
+					args = append(args, "--device", device+":"+device+":rw")
+				}
+			}
+		}
 		for _, dev := range grant.Devices {
 			args = append(args, "--device", dev)
 		}

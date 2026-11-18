@@ -35,7 +35,7 @@ func TestParseAllPlusPrivileged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if Format(got) != "kvm,tun,fuse,binder,privileged" {
+	if Format(got) != "kvm,tun,fuse,binder,gpu,privileged" {
 		t.Fatalf("got %q", Format(got))
 	}
 }
@@ -220,7 +220,7 @@ func TestResolveEmpty(t *testing.T) {
 // (AW_HOST_POWER crosses the boundary). A rename on one side silently stops
 // matching on the other.
 func TestCatalogNamesMatchTheWireContract(t *testing.T) {
-	want := []string{"kvm", "tun", "fuse", "binder", "privileged"}
+	want := []string{"kvm", "tun", "fuse", "binder", "gpu", "privileged"}
 	if len(catalog) != len(want) {
 		t.Fatalf("catalog has %d grants, wire contract has %d", len(catalog), len(want))
 	}
@@ -240,5 +240,30 @@ func TestHelpListsEveryGrantAndAll(t *testing.T) {
 	}
 	if !strings.Contains(help, AllKeyword) {
 		t.Fatal("--help omits the all keyword")
+	}
+}
+
+func TestGPUDeviceSelection(t *testing.T) {
+	const render = "/dev/dri/renderD128"
+	const blocked = "/dev/dri/renderD129"
+	nodes := []string{"/dev/dri/card0", render, blocked}
+	probe := func(path string, keepGroups bool) error {
+		if !keepGroups || path == blocked {
+			return os.ErrPermission
+		}
+		return nil
+	}
+	isAMD := func(path string) bool { return path == render }
+	if got, reason := selectGPUDevices(nodes, true, probe, isAMD); Format(got) != render+",/dev/kfd,keep-groups" || reason != "" {
+		t.Fatalf("GPU selection = %v, %q", got, reason)
+	}
+	if got, reason := selectGPUDevices(nodes, false, probe, isAMD); len(got) != 0 || reason == "" {
+		t.Fatalf("inaccessible GPU selection = %v, %q", got, reason)
+	}
+	if got, reason := selectGPUDevices(nodes[:1], true, probe, isAMD); len(got) != 0 || reason == "" {
+		t.Fatalf("card-only GPU selection = %v, %q", got, reason)
+	}
+	if got, reason := selectGPUDevices(nodes, true, probe, func(string) bool { return false }); Format(got) != render+",keep-groups" || reason != "" {
+		t.Fatalf("non-AMD GPU selection = %v, %q", got, reason)
 	}
 }
