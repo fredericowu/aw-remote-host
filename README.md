@@ -200,6 +200,28 @@ health checks are skipped — nothing was installed, so nothing to check) and
 switches to the full per-module health report once either path above has
 completed successfully.
 
+### Optional GPU access for container apps
+
+Use `bootstrap-workspace --with-workspace --host-power=gpu` to opt in.
+Include any existing grants in the comma-separated list when changing it.
+The host reports the requested and effective grants. When the GPU probe
+fails and GPU was the only request, the workspace still starts on CPU.
+Signed apps must declare `runtime.host_power_optional: ["gpu"]` and hold
+`host:device-gpu` to receive optional GPU access.
+
+The grant passes native Linux DRM render character devices that the host
+user can open read/write. AMD ROCm also needs an accessible `/dev/kfd`.
+Vulkan and ROCm workloads need compatible hardware and userspace in the app
+image. NVIDIA CUDA needs a separate CDI/runtime integration. A DRM render
+node alone does not supply CUDA. This probe does not cover GPUs exposed only
+inside a macOS or Windows Podman VM.
+
+For group-restricted devices, rootless Podman needs crun and the Podman
+service user needs access to the device groups. Refresh the user session and
+Podman service after changing group membership. Host SELinux policy and
+the app's container user also affect device access. Check
+`aw-remote-host status` and `aw-workspace-cli doctor` after bootstrap.
+
 ### Downgrade guard on a full bootstrap
 
 Either path above — `--with-workspace` here, or the control plane's
