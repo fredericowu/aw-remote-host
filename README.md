@@ -59,20 +59,20 @@ still previews everything without touching your system. See
 Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.ps1 | iex
 ```
 
 Both pin an exact release version, verify its SHA-256 checksum against the
 release's published `checksums.txt`, and install without needing admin
 rights. `install.sh` downloads the matching
 `linux_amd64`/`linux_arm64`/`darwin_amd64`/`darwin_arm64` tarball from
-[GitHub Releases](https://github.com/tekflox/aw-remote-host/releases) into
+[GitHub Releases](https://github.com/fredericowu/aw-remote-host/releases) into
 `~/.local/bin`; `install.ps1` downloads the `windows_amd64`/`windows_arm64`
 zip into `%LOCALAPPDATA%\Programs\aw-remote-host` and adds it to your user
 PATH.
@@ -96,7 +96,7 @@ commit `753214a`) only takes effect on the target machine once the
 2. On the target machine, re-run the installer to pull the new pinned
    version and replace the binary in place:
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.sh | sh
+   curl -fsSL https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.sh | sh
    ```
    (or set `AW_REMOTE_HOST_VERSION=<tag>` to pin explicitly instead of the
    script's built-in default).
@@ -590,7 +590,7 @@ Updating by hand is still available, and is the fallback if the link itself
 is down:
 
 ```powershell
-irm https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.ps1 | iex
 taskkill /F /IM aw-remote-host.exe
 taskkill /F /IM aw-remote-hostw.exe
 schtasks /Run /TN aw-remote-host
@@ -616,7 +616,7 @@ Windows 10 1809 or newer. `pwsh` when installed, else `powershell.exe`.
 Install:
 
 ```powershell
-irm https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.ps1 | iex
 ```
 
 Then, in a **new** terminal (the installer adds itself to your user PATH):

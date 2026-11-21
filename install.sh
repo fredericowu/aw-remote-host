@@ -4,12 +4,12 @@
 # checksums.txt, and installs it to ~/.local/bin.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.sh | sh
 #   curl -fsSL .../install.sh | AW_REMOTE_HOST_VERSION=v0.1.0 sh   # pin a version
 #   curl -fsSL .../install.sh | AW_REMOTE_HOST_FORCE=1 sh          # reinstall anyway
 set -eu
 
-REPO="tekflox/aw-remote-host"
+REPO="fredericowu/aw-remote-host"
 VERSION="${AW_REMOTE_HOST_VERSION:-latest}"
 INSTALL_DIR="${AW_REMOTE_HOST_INSTALL_DIR:-$HOME/.local/bin}"
 

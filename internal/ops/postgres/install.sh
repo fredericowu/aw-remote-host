@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Install (or reuse) a 127.0.0.1-only postgres+pgvector container. Idempotent.
+set -euo pipefail
+
+IMAGE="docker.io/pgvector/pgvector@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb"
+CONTAINER_NAME="aw-remote-host-postgres"
+NETWORK_NAME="aw-remote-host"
+POSTGRES_PASSWORD="${AW_POSTGRES_PASSWORD:-postgres}"
+
+# The data dir lives under $HOME on the host, NOT in a podman named volume.
+# Why: on a containerised BYOD host, podman's storage (/var/lib/containers)
+# sits in the aw-remote-host container's own writable overlay layer, so the
+# `docker rm -f` + `run` that every aw-remote-host UPDATE performs destroys
+# it — taking the workspace's entire database with it. $HOME is the durable
+# mount. Same ${HOME}/<name> + AW_*_HOST_DIR override convention as
+# bootstrap/workspace/install.sh's HOST_DIR.
+#
+# Resolved through bootstrap/lib/container.sh's resolve_data_dir(), NOT
+# inline — verify.sh computes this exact same path the exact same way, and
+# that file's header explains why they must never be allowed to drift.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/publish.sh
+source "$SCRIPT_DIR/../lib/publish.sh"
+# shellcheck source=../lib/network.sh
+source "$SCRIPT_DIR/../lib/network.sh"
+# shellcheck source=../lib/container.sh
+source "$SCRIPT_DIR/../lib/container.sh"
+# postgres_wait_ready / postgres_has_database — "it answered" is not "it is
+# ready", and verify.sh has to ask the database question the same way.
+# shellcheck source=../lib/postgres_ready.sh
+source "$SCRIPT_DIR/../lib/postgres_ready.sh"
+
+# The database the aw-workspace runtime connects to. Named once here and in
+# verify.sh from the same constant so the two can never disagree about which
+# database "installed" means.
+WORKSPACE_DB="aw_workspace"
+
+DATA_DIR="$(resolve_data_dir AW_POSTGRES_HOST_DIR postgres-data)"
+LEGACY_VOLUME="aw-remote-host-postgres-data"
+CONTAINER_DATA_DIR="/var/lib/postgresql/data"
+# The `postgres` user baked into the pgvector image.
+POSTGRES_UID="999"
+POSTGRES_GID="999"
+
+# Host-port publish is optional — see bootstrap/lib/publish.sh for why a taken
+# port must not fail the install.
+PUBLISH_ARGS=()
+while IFS= read -r line; do
+  PUBLISH_ARGS+=("$line")
+done < <(publish_args postgres 5432 "${AW_POSTGRES_PUBLISH:-}")
+
+# Shared network so the workspace container reaches postgres by name (a BYOD
+# host has no aw-sandbox netns to piggyback on 127.0.0.1).
+ensure_network "$NETWORK_NAME"
+
+# A container left over from before the volume->host-dir move must be REPLACED,
+# not just started — otherwise a host bootstrapped earlier keeps its database
+# on the ephemeral volume forever and never picks this fix up. Removing the
+# container leaves that volume (and its data) untouched, so the copy below has
+# something to migrate from and a rollback stays available.
+if podman container exists "$CONTAINER_NAME"; then
+  current_src="$(mount_source "$CONTAINER_NAME" "$CONTAINER_DATA_DIR")"
+  if [ "$current_src" = "$DATA_DIR" ]; then
+    echo "postgres: container already exists on $DATA_DIR, ensuring it's running"
+    podman network connect "$NETWORK_NAME" "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    start_or_discard "$CONTAINER_NAME" postgres || true
+  else
+    echo "postgres: container is on legacy storage ($current_src) — recreating on $DATA_DIR"
+    podman stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    podman rm -f "$CONTAINER_NAME" >/dev/null
+  fi
+fi
+
+if ! podman container exists "$CONTAINER_NAME"; then
+  mkdir -p "$DATA_DIR"
+
+  # One-time migration off the legacy named volume. Only when the target is
+  # still empty — a populated $DATA_DIR is the source of truth and must never
+  # be overwritten by a stale volume that happens to still exist.
+  if [ -z "$(ls -A "$DATA_DIR" 2>/dev/null)" ] && podman volume exists "$LEGACY_VOLUME" 2>/dev/null; then
+    legacy_data="$(podman volume inspect "$LEGACY_VOLUME" --format '{{.Mountpoint}}' 2>/dev/null || true)"
+    if [ -n "$legacy_data" ] && [ -n "$(ls -A "$legacy_data" 2>/dev/null)" ]; then
+      echo "postgres: migrating data $legacy_data -> $DATA_DIR (legacy volume kept as rollback)"
+      cp -a "$legacy_data/." "$DATA_DIR/"
+    fi
+  fi
+
+  # Must be writable by the image's `postgres` user — root can chown directly,
+  # a rootless host needs `podman unshare` to land inside its own user-namespace
+  # mapping (same dual path as bootstrap/workspace/install.sh).
+  if [ "$(id -u)" = "0" ]; then
+    chown -R "${POSTGRES_UID}:${POSTGRES_GID}" "$DATA_DIR" 2>/dev/null || true
+  else
+    podman unshare chown -R "${POSTGRES_UID}:${POSTGRES_GID}" "$DATA_DIR" 2>/dev/null || true
+  fi
+
+  podman run -d \
+    --name "$CONTAINER_NAME" \
+    --network "$NETWORK_NAME" \
+    ${PUBLISH_ARGS[@]+"${PUBLISH_ARGS[@]}"} \
+    -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+    -v "$DATA_DIR":"$CONTAINER_DATA_DIR" \
+    "$IMAGE"
+fi
+
+echo "postgres: waiting for readiness..."
+# NOT a bare pg_isready: during initdb the entrypoint runs a temporary server
+# on the unix socket only, and probing that socket reports it ready seconds
+# before the real server exists. See bootstrap/lib/postgres_ready.sh for the
+# install this broke. Failing loudly here also beats falling through to the
+# CREATE DATABASE below and dying there with a psql error nobody can read.
+if ! postgres_wait_ready "$CONTAINER_NAME" 90; then
+  echo "postgres: never accepted a TCP connection — refusing to continue" >&2
+  podman logs --tail 40 "$CONTAINER_NAME" >&2 2>/dev/null || true
+  exit 1
+fi
+
+# Postgres only applies POSTGRES_PASSWORD on the data dir's FIRST init. If
+# state.json (which holds AW_POSTGRES_PASSWORD) was lost while the data
+# survived, a re-bootstrap generates a new password that won't match what's
+# baked into the data dir, and auth fails silently downstream. Re-apply the
+# current password unconditionally so the pair self-corrects regardless of
+# whether this run created a fresh data dir or reused an existing one.
+podman exec "$CONTAINER_NAME" psql -h 127.0.0.1 -U postgres -c \
+  "ALTER USER postgres WITH PASSWORD '${POSTGRES_PASSWORD}';" >/dev/null
+echo "postgres: password re-applied (idempotent)"
+
+# Create the workspace database (the aw-workspace runtime connects to
+# .../aw_workspace) and enable pgvector inside it. Idempotent.
+if ! postgres_has_database "$CONTAINER_NAME" "$WORKSPACE_DB"; then
+  podman exec "$CONTAINER_NAME" psql -h 127.0.0.1 -U postgres -c "CREATE DATABASE ${WORKSPACE_DB};" >/dev/null
+fi
+podman exec "$CONTAINER_NAME" psql -h 127.0.0.1 -U postgres -d "$WORKSPACE_DB" -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null
+echo "postgres: ready, aw_workspace db + pgvector enabled ($DATA_DIR)"

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Exit 0 if the redis container is running, responding to PING, AND mounted
+# on the data dir install.sh expects.
+#
+# The mount check exists because of the 2026-09-02 incident: this script
+# used to only run PING, never checking WHICH volume was actually mounted,
+# so a container left on an emptied-out legacy volume read as "healthy"
+# indefinitely and install.sh's own legacy-storage recreate branch never
+# got a chance to run (RunModule skips install.sh entirely once verify.sh
+# exits 0). See bootstrap/lib/container.sh for the full story and
+# bootstrap/workspace/verify.sh for the same bug class solved once already
+# for a different symptom.
+set -euo pipefail
+
+CONTAINER_NAME="aw-remote-host-redis"
+CONTAINER_DATA_DIR="/data"
+
+if ! podman container exists "$CONTAINER_NAME"; then
+  echo "redis: container not found" >&2
+  exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/container.sh
+source "$SCRIPT_DIR/../lib/container.sh"
+
+expected_dir="$(resolve_data_dir AW_REDIS_HOST_DIR redis-data)"
+actual_dir="$(mount_source "$CONTAINER_NAME" "$CONTAINER_DATA_DIR")"
+if [ "$actual_dir" != "$expected_dir" ]; then
+  echo "redis: mounted on '${actual_dir:-<unknown>}', expected '$expected_dir' — recreating on the expected data dir" >&2
+  exit 1
+fi
+
+# A redis replaying its AOF answers LOADING, not PONG — which is NOT YET
+# rather than broken, and failing on it fails the whole module chain right
+# after a recreate, i.e. exactly when there is a dataset to replay. Same
+# helper install.sh waits with, so the two can never disagree about what
+# "ready" means (bootstrap/lib/container.sh's header explains why that matters
+# more than it looks).
+# shellcheck source=../lib/redis_ready.sh
+source "$SCRIPT_DIR/../lib/redis_ready.sh"
+
+# Waiting is only meaningful for a container that COULD still answer. After
+# the host container is recreated every nested container is recorded as
+# running with a pid that no longer exists (see container_is_live), and a
+# redis in that state can never reply — so the wait below burned its full
+# budget, a measured 60 seconds, on every single recreate before install.sh
+# was even allowed to rebuild it. Failing fast here hands over immediately;
+# install.sh's start_or_discard is what knows how to fix it.
+if ! container_is_live "$CONTAINER_NAME"; then
+  echo "redis: $CONTAINER_NAME is not running — handing over to install.sh to rebuild it" >&2
+  exit 1
+fi
+
+if ! redis_wait_ready "$CONTAINER_NAME" 60; then
+  exit 1
+fi
+echo "redis: healthy"
