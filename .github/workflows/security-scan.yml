@@ -48,7 +48,7 @@ name: Security scan
 #     grep -h 'cron:' repos/*/.github/workflows/security-scan.yml | sort | uniq -c
 #
 # `workflow_dispatch: {}` is what makes this verifiable on demand —
-# `gh workflow run "Security scan" --repo tekflox/aw-remote-host`.
+# `gh workflow run "Security scan" --repo fredericowu/aw-remote-host`.
 #
 # ── NEVER ADD A pull_request TRIGGER TO THIS FILE — AND THIS REPO IS PUBLIC ─
 # `runs_on` is left at its default, `[self-hosted, aw-baremetal]`, and that is
@@ -71,14 +71,9 @@ name: Security scan
 # weekly, trusted-code job, and the shared pool is what the fleet's stagger
 # was designed around. Do not unify the two for tidiness.
 #
-# `tekflox/aw-remote-host` has no repo-level runner of its own (verified: 0)
-# and reaches the `aw-baremetal` label through the tekflox ORG runner group
-# `aw-private` — the 4 shared `aw-baremetal-tekflox*` runners this repo's
-# `ci.yml` and `release.yml` self-hosted jobs already run on green. That path
-# exists only for `tekflox/*` repos: an org runner group cannot be shared
-# outside its org, so a personal-account caller with no dedicated runner would
-# QUEUE FOREVER rather than fail. Not this repo's problem, but it is why the
-# input exists.
+# `fredericowu/aw-remote-host` has its own repo-level `aw-baremetal` runner
+# (a personal-account repo cannot use the tekflox org runner group, so a
+# caller without a dedicated runner would QUEUE FOREVER rather than fail).
 #
 # ── sarif_upload: LEFT AT ITS DEFAULT (true) — THIS IS THE PUBLIC CASE ────
 # No `with:` block at all, deliberately. This repo is PUBLIC, so code scanning

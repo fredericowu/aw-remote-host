@@ -189,7 +189,7 @@ func installAgent(opts Options) error {
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >/dev/null 2>&1 || true
 apt-get install -y -qq curl ca-certificates >/dev/null 2>&1 || true
-curl -fsSL https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.sh | sh`)
+curl -fsSL https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.sh | sh`)
 	if err != nil {
 		return fmt.Errorf("install aw-remote-host inside the distro: %w", err)
 	}

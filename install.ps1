@@ -6,7 +6,7 @@
 # transparency guarantee. See README.md.
 #
 # Usage:
-#   irm https://raw.githubusercontent.com/tekflox/aw-remote-host/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/fredericowu/aw-remote-host/main/install.ps1 | iex
 #   $env:AW_REMOTE_HOST_VERSION='v0.1.0'; irm .../install.ps1 | iex   # pin a version
 #
 # NOTE: a Windows host is a LEAN link — it registers the machine and serves
@@ -17,7 +17,7 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repo = 'tekflox/aw-remote-host'
+$repo = 'fredericowu/aw-remote-host'
 $version = if ($env:AW_REMOTE_HOST_VERSION) { $env:AW_REMOTE_HOST_VERSION } else { 'latest' }
 $installDir = if ($env:AW_REMOTE_HOST_INSTALL_DIR) {
     $env:AW_REMOTE_HOST_INSTALL_DIR

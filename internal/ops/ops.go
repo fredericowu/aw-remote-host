@@ -1752,7 +1752,7 @@ func (h *Handler) SelfUpdate(ctx context.Context, args map[string]any, emit Emit
 // installerBaseURL is where both installers are fetched from. Kept as one
 // constant so a branch rename can't leave the two platforms pointing at
 // different refs of the same script.
-const installerBaseURL = "https://raw.githubusercontent.com/tekflox/aw-remote-host/main"
+const installerBaseURL = "https://raw.githubusercontent.com/fredericowu/aw-remote-host/main"
 
 // installerCommand returns the argv that runs this platform's public
 // installer with the version and install dir pinned. Same shape as
